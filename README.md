@@ -22,7 +22,7 @@
   * Only the product in slot 2 is stored. Byproducts are discarded, but still counted as produced in the statistics panel.
   * Byproducts never block the main product.
 * Auto-fill ingredients:
-  * Set slot 1 (Storage) and slot 2, leave the rest empty, then click the "塔厂：填原料" button at the top right of the station window.
+  * Set slot 1 (Storage) and slot 2, leave the rest empty, then click the "Fill Ingredients" button at the top right of the station window.
   * Ingredients are set to Demand. Pseudo recipes take priority.
   * If no recipe fits, you'll see "原料格子不够，请加装运输塔扩容mod" (not enough slots, install a station expansion mod).
 * Pseudo recipes (several real recipes merged into one; every intermediate step is counted in the statistics):
@@ -58,7 +58,7 @@
 ## Notes
 
 * Multiplayer is untested.
-* The button text is Chinese only.
+* Popup tips and log messages are Chinese only.
 
 ## CREDITS
 

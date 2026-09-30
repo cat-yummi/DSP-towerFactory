@@ -11,6 +11,7 @@ namespace TowerFactory
     public static class UIStationWindowPatch
     {
         private static Button _autoFillButton;
+        private static Text _autoFillText;
 
         [HarmonyPostfix]
         [HarmonyPatch("OnStationIdChange")]
@@ -24,6 +25,22 @@ namespace TowerFactory
             StationComponent station = GetStation(__instance);
             bool visible = __instance.active && station != null && !station.isCollector && !station.isVeinCollector;
             _autoFillButton.gameObject.SetActive(visible);
+            if (visible)
+            {
+                UpdateButtonText();
+            }
+        }
+
+        private static void UpdateButtonText()
+        {
+            string label = Localization.isZHCN ? "塔厂：填原料" : "Fill Ingredients";
+            if (_autoFillText.text == label)
+            {
+                return;
+            }
+            _autoFillText.text = label;
+            RectTransform btnRect = (RectTransform)_autoFillButton.transform;
+            btnRect.sizeDelta = new Vector2(Mathf.Max(100f, _autoFillText.preferredWidth + 16f), btnRect.sizeDelta.y);
         }
 
         private static StationComponent GetStation(UIStationWindow window)
@@ -67,7 +84,7 @@ namespace TowerFactory
             GameObject textObj = new GameObject("Text");
             textObj.transform.SetParent(btnObj.transform, false);
             Text text = textObj.AddComponent<Text>();
-            text.text = "塔厂：填原料";
+            _autoFillText = text;
             text.font = window.titleText != null ? window.titleText.font : Resources.GetBuiltinResource<Font>("Arial.ttf");
             text.fontSize = 14;
             text.alignment = TextAnchor.MiddleCenter;
