@@ -72,6 +72,11 @@ namespace TowerFactory
 
         private static readonly ConditionalWeakTable<StationComponent, State> states = new ConditionalWeakTable<StationComponent, State>();
 
+        internal static string Tr(string zh, string en)
+        {
+            return Localization.isZHCN ? zh : en;
+        }
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(PlanetTransport), nameof(PlanetTransport.GameTick))]
         public static void PlanetTransport_GameTick_Postfix(PlanetTransport __instance)
@@ -501,8 +506,9 @@ namespace TowerFactory
             {
                 transport.SetStationStorage(station.id, FirstIngredientSlot + j, ingredients[j], int.MaxValue, ELogisticStorage.Demand, remoteLogic, null);
             }
-            message = $"已填入原料：{string.Join("、", ingredients.Select(ItemName))}";
-            TowerFactory.Log.LogInfo($"{StationLabel(transport.factory, station)} {message}");
+            string names = string.Join(Tr("、", ", "), ingredients.Select(ItemName));
+            message = Tr($"已填入原料：{names}", $"Ingredients filled: {names}");
+            TowerFactory.Log.LogInfo($"{StationLabel(transport.factory, station)} 已填入原料：{names}");
             return true;
         }
 
@@ -511,32 +517,32 @@ namespace TowerFactory
             StationStore[] storage = station?.storage;
             if (storage == null || station.isCollector || station.isVeinCollector || storage.Length <= FirstIngredientSlot)
             {
-                reason = "这座塔不能做塔厂";
+                reason = Tr("这座塔不能做塔厂", "This station can't be a tower factory");
                 return null;
             }
             StationStore buildingSlot = storage[0];
             PrefabDesc prefabDesc = buildingSlot.itemId > 0 ? LDB.items.Select(buildingSlot.itemId)?.prefabDesc : null;
             if (prefabDesc == null || !(prefabDesc.isAssembler || prefabDesc.isLab || prefabDesc.isFractionator || prefabDesc.isPowerExchanger))
             {
-                reason = "第一格需要放有配方的生产建筑";
+                reason = Tr("第一格需要放有配方的生产建筑", "Slot 1 must hold a production building that uses recipes");
                 return null;
             }
             if (buildingSlot.localLogic != ELogisticStorage.None || (station.isStellar && buildingSlot.remoteLogic != ELogisticStorage.None))
             {
-                reason = "第一格需要设为仓储";
+                reason = Tr("第一格需要设为仓储", "Slot 1 must be set to Storage");
                 return null;
             }
             int productId = storage[1].itemId;
             if (productId <= 0)
             {
-                reason = "第二格需要放产品";
+                reason = Tr("第二格需要放产品", "Slot 2 must hold the product");
                 return null;
             }
             for (int i = FirstIngredientSlot; i < storage.Length; i++)
             {
                 if (storage[i].itemId != 0)
                 {
-                    reason = "第三格起需要全部为空";
+                    reason = Tr("第三格起需要全部为空", "Slot 3 and later must all be empty");
                     return null;
                 }
             }
@@ -571,13 +577,13 @@ namespace TowerFactory
             }
             if (candidates.Count == 0)
             {
-                reason = $"{ItemName(productId)} 不是该建筑能生产的产品";
+                reason = Tr($"{ItemName(productId)} 不是该建筑能生产的产品", $"{ItemName(productId)} can't be produced by this building");
                 return null;
             }
 
             if (!candidates.Any(ingredients => FitsSlotCount(storage, ingredients)))
             {
-                reason = SlotsNotEnoughMessage;
+                reason = Tr(SlotsNotEnoughMessage, "Not enough slots for the ingredients. Please install a station slot expansion mod");
                 return null;
             }
             foreach (int[] ingredients in candidates)
@@ -592,7 +598,7 @@ namespace TowerFactory
                     return ingredients;
                 }
             }
-            reason = "放得下的配方里，原料与塔里已有物品重复";
+            reason = Tr("放得下的配方里，原料与塔里已有物品重复", "Every recipe that fits has an ingredient that duplicates an item already in the station");
             return null;
         }
 

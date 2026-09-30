@@ -29,7 +29,7 @@
 		<PlatformTarget>x64</PlatformTarget>
 	</PropertyGroup>
 	<PropertyGroup>
-		<R2ModmanPluginDir Condition=" '$(R2ModmanPluginDir)' == '' ">$(APPDATA)\r2modmanPlus-local\DysonSphereProgram\profiles\Default\BepInEx\plugins\Unknown-TowerFactory</R2ModmanPluginDir>
+		<R2ModmanPluginDir Condition=" '$(R2ModmanPluginDir)' == '' ">$(APPDATA)\r2modmanPlus-local\DysonSphereProgram\profiles\Default\BepInEx\plugins\cat_yummi-TowerFactory</R2ModmanPluginDir>
 	</PropertyGroup>
 	<Target Name="DeployToR2Modman" AfterTargets="Build" Condition="Exists('$(R2ModmanPluginDir)')">
 		<Copy SourceFiles="icon.png;README.md;manifest.json" DestinationFolder="$(R2ModmanPluginDir)" Retries="0" ContinueOnError="WarnAndContinue" />

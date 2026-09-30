@@ -33,7 +33,7 @@ namespace TowerFactory
 
         private static void UpdateButtonText()
         {
-            string label = Localization.isZHCN ? "塔厂：填原料" : "Fill Ingredients";
+            string label = StationProductionPatch.Tr("塔厂：填原料", "Fill Ingredients");
             if (_autoFillText.text == label)
             {
                 return;

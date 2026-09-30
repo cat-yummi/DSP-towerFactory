@@ -58,7 +58,7 @@
 ## Notes
 
 * Multiplayer is untested.
-* Popup tips and log messages are Chinese only.
+* The button and its popup tips follow the game language (Chinese for zh-CN, English otherwise). Log messages are Chinese only.
 
 ## CREDITS
 
