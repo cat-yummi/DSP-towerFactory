@@ -9,7 +9,7 @@ namespace TowerFactory
     {
         public const string PLUGIN_GUID = "com.yummi.dsp.towerfactory";
         public const string PLUGIN_NAME = "塔厂 (Tower Factory)";
-        public const string PLUGIN_VERSION = "1.0.0";
+        public const string PLUGIN_VERSION = "1.1.0";
 
         private static readonly Harmony harmony = new Harmony(PLUGIN_GUID);
         internal static ManualLogSource Log;
