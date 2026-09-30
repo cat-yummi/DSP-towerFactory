@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "TowerFactory",
-  "description": "Logistics stations can produce items | 杩愯緭濉斾篃鑳界敓浜х墿璧?,
+  "description": "Logistics stations can produce items | 运输塔也能生产物资",
   "version_number": "1.0.0",
   "website_url": "",
   "dependencies": [
