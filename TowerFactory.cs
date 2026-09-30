@@ -19,6 +19,7 @@ namespace TowerFactory
             Log = Logger;
 
             harmony.PatchAll(typeof(StationProductionPatch));
+            harmony.PatchAll(typeof(UIStationWindowPatch));
 
             Log.LogInfo($"{PLUGIN_NAME} v{PLUGIN_VERSION} 已加载");
         }

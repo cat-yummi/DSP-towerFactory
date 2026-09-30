@@ -451,33 +451,60 @@ namespace TowerFactory
         }
 
         /// <summary>
-        /// 第一格是生产建筑、第二格有产品、后续格全空时，给出应自动填入的原料（伪配方优先）。
+        /// 自动填原料：第一格是仓储的生产建筑、第二格有产品、第三格起全空时，按配方填入原料（伪配方优先）。
         /// </summary>
-        private static int[] SuggestIngredients(StationStore[] storage, bool isStellar)
+        public static bool TryAutoFill(PlanetTransport transport, StationComponent station, out string message)
         {
-            if (storage.Length <= FirstIngredientSlot || storage[1].itemId <= 0)
+            int[] ingredients = SuggestIngredients(station, out message);
+            if (ingredients == null)
             {
+                return false;
+            }
+            ELogisticStorage remoteLogic = station.isStellar ? ELogisticStorage.Demand : ELogisticStorage.None;
+            for (int j = 0; j < ingredients.Length; j++)
+            {
+                transport.SetStationStorage(station.id, FirstIngredientSlot + j, ingredients[j], int.MaxValue, ELogisticStorage.Demand, remoteLogic, null);
+            }
+            message = $"已填入原料：{string.Join("、", ingredients.Select(ItemName))}";
+            TowerFactory.Log.LogInfo($"{StationLabel(transport.factory, station)} {message}");
+            return true;
+        }
+
+        private static int[] SuggestIngredients(StationComponent station, out string reason)
+        {
+            StationStore[] storage = station?.storage;
+            if (storage == null || station.isCollector || station.isVeinCollector || storage.Length <= FirstIngredientSlot)
+            {
+                reason = "这座塔不能做塔厂";
                 return null;
             }
             StationStore buildingSlot = storage[0];
-            if (buildingSlot.localLogic != ELogisticStorage.None || (isStellar && buildingSlot.remoteLogic != ELogisticStorage.None))
+            PrefabDesc prefabDesc = buildingSlot.itemId > 0 ? LDB.items.Select(buildingSlot.itemId)?.prefabDesc : null;
+            if (prefabDesc == null || !(prefabDesc.isAssembler || prefabDesc.isLab || prefabDesc.isFractionator))
             {
+                reason = "第一格需要放有配方的生产建筑";
+                return null;
+            }
+            if (buildingSlot.localLogic != ELogisticStorage.None || (station.isStellar && buildingSlot.remoteLogic != ELogisticStorage.None))
+            {
+                reason = "第一格需要设为仓储";
+                return null;
+            }
+            int productId = storage[1].itemId;
+            if (productId <= 0)
+            {
+                reason = "第二格需要放产品";
                 return null;
             }
             for (int i = FirstIngredientSlot; i < storage.Length; i++)
             {
                 if (storage[i].itemId != 0)
                 {
+                    reason = "第三格起需要全部为空";
                     return null;
                 }
             }
-            PrefabDesc prefabDesc = buildingSlot.itemId > 0 ? LDB.items.Select(buildingSlot.itemId)?.prefabDesc : null;
-            if (prefabDesc == null)
-            {
-                return null;
-            }
 
-            int productId = storage[1].itemId;
             var candidates = new List<int[]>();
             if (prefabDesc.isFractionator)
             {
@@ -489,7 +516,7 @@ namespace TowerFactory
                     }
                 }
             }
-            else if (prefabDesc.isAssembler || prefabDesc.isLab)
+            else
             {
                 ERecipeType recipeType = prefabDesc.isAssembler ? prefabDesc.assemblerRecipeType : ERecipeType.Research;
                 candidates.AddRange(PseudoRecipes.All
@@ -498,6 +525,11 @@ namespace TowerFactory
                 candidates.AddRange(LDB.recipes.dataArray
                     .Where(recipe => recipe != null && recipe.Type == recipeType && Array.IndexOf(recipe.Results, productId) >= 0)
                     .Select(recipe => recipe.Items));
+            }
+            if (candidates.Count == 0)
+            {
+                reason = $"{ItemName(productId)} 不是该建筑能生产的产品";
+                return null;
             }
 
             foreach (int[] ingredients in candidates)
@@ -508,56 +540,12 @@ namespace TowerFactory
                     && !ingredients.Contains(productId);
                 if (fits)
                 {
+                    reason = null;
                     return ingredients;
                 }
             }
+            reason = "没有放得下的配方（格子不够或原料与已有物品重复）";
             return null;
-        }
-
-        /// <summary>
-        /// 第一格已是仓储时再次选择"仓储"（物品、上限都不变），视为请求自动填原料。
-        /// </summary>
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(PlanetTransport), nameof(PlanetTransport.SetStationStorage))]
-        public static void PlanetTransport_SetStationStorage_Prefix(PlanetTransport __instance, int stationId, int storageIdx, int itemId, int itemCountMax,
-            ELogisticStorage localLogic, ELogisticStorage remoteLogic, out bool __state)
-        {
-            __state = false;
-            if (storageIdx != 0)
-            {
-                return;
-            }
-            StationComponent station = __instance.GetStationComponent(stationId);
-            if (station?.storage == null || station.storage.Length == 0)
-            {
-                return;
-            }
-            StationStore slot = station.storage[0];
-            bool wasStorage = slot.localLogic == ELogisticStorage.None && (!station.isStellar || slot.remoteLogic == ELogisticStorage.None);
-            bool staysStorage = localLogic == ELogisticStorage.None && (!station.isStellar || remoteLogic == ELogisticStorage.None);
-            __state = slot.itemId > 0 && slot.itemId == itemId && slot.max == itemCountMax && wasStorage && staysStorage;
-        }
-
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(PlanetTransport), nameof(PlanetTransport.SetStationStorage))]
-        public static void PlanetTransport_SetStationStorage_Postfix(PlanetTransport __instance, int stationId, bool __state)
-        {
-            if (!__state)
-            {
-                return;
-            }
-            StationComponent station = __instance.GetStationComponent(stationId);
-            int[] ingredients = SuggestIngredients(station.storage, station.isStellar);
-            if (ingredients == null)
-            {
-                return;
-            }
-            ELogisticStorage remoteLogic = station.isStellar ? ELogisticStorage.Demand : ELogisticStorage.None;
-            for (int j = 0; j < ingredients.Length; j++)
-            {
-                __instance.SetStationStorage(stationId, FirstIngredientSlot + j, ingredients[j], int.MaxValue, ELogisticStorage.Demand, remoteLogic, null);
-            }
-            TowerFactory.Log.LogInfo($"{StationLabel(__instance.factory, station)} 自动填入原料：{string.Join("、", ingredients.Select(ItemName))}");
         }
 
         private static bool SlotsMatch(StationStore[] storage, int[] ingredients)
