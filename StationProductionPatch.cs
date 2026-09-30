@@ -321,7 +321,8 @@ namespace TowerFactory
             bool isMiner = prefabDesc.minerType == EMinerType.Vein || prefabDesc.isVeinCollector;
             bool isPump = prefabDesc.minerType == EMinerType.Water;
             bool isOilExtractor = prefabDesc.minerType == EMinerType.Oil;
-            if (!prefabDesc.isAssembler && !prefabDesc.isLab && !prefabDesc.isFractionator && !isMiner && !isPump && !isOilExtractor && !prefabDesc.gammaRayReceiver)
+            if (!prefabDesc.isAssembler && !prefabDesc.isLab && !prefabDesc.isFractionator && !isMiner && !isPump && !isOilExtractor
+                && !prefabDesc.gammaRayReceiver && !prefabDesc.isPowerExchanger)
             {
                 return null;
             }
@@ -361,6 +362,10 @@ namespace TowerFactory
             if (isOilExtractor)
             {
                 return MatchOilExtractorPlan(factory, storage, out reason);
+            }
+            if (prefabDesc.isPowerExchanger)
+            {
+                return MatchExchangerPlan(storage, prefabDesc, out reason);
             }
             return MatchGammaPlan(factory, storage, prefabDesc, out reason);
         }
@@ -511,7 +516,7 @@ namespace TowerFactory
             }
             StationStore buildingSlot = storage[0];
             PrefabDesc prefabDesc = buildingSlot.itemId > 0 ? LDB.items.Select(buildingSlot.itemId)?.prefabDesc : null;
-            if (prefabDesc == null || !(prefabDesc.isAssembler || prefabDesc.isLab || prefabDesc.isFractionator))
+            if (prefabDesc == null || !(prefabDesc.isAssembler || prefabDesc.isLab || prefabDesc.isFractionator || prefabDesc.isPowerExchanger))
             {
                 reason = "第一格需要放有配方的生产建筑";
                 return null;
@@ -537,7 +542,14 @@ namespace TowerFactory
             }
 
             var candidates = new List<int[]>();
-            if (prefabDesc.isFractionator)
+            if (prefabDesc.isPowerExchanger)
+            {
+                if (productId == prefabDesc.fullId && prefabDesc.emptyId > 0)
+                {
+                    candidates.Add(new[] { prefabDesc.emptyId });
+                }
+            }
+            else if (prefabDesc.isFractionator)
             {
                 foreach (RecipeProto recipe in LDB.recipes.dataArray)
                 {
@@ -582,6 +594,42 @@ namespace TowerFactory
             }
             reason = "放得下的配方里，原料与塔里已有物品重复";
             return null;
+        }
+
+        /// <summary>
+        /// 能量枢纽只做充电且不耗电：1 空蓄电器 → 1 满蓄电器，耗时 = 蓄电器容量 ÷ 枢纽功率。
+        /// </summary>
+        private static Plan MatchExchangerPlan(StationStore[] storage, PrefabDesc prefabDesc, out string reason)
+        {
+            reason = null;
+            if (storage.Length <= FirstIngredientSlot)
+            {
+                reason = SlotsNotEnoughMessage;
+                return null;
+            }
+            if (storage[1].itemId != prefabDesc.fullId || storage[FirstIngredientSlot].itemId != prefabDesc.emptyId)
+            {
+                reason = $"第二格应为 {ItemName(prefabDesc.fullId)}，第三格应为 {ItemName(prefabDesc.emptyId)}";
+                return null;
+            }
+            if (prefabDesc.exchangeEnergyPerTick <= 0 || prefabDesc.maxExcEnergy <= 0)
+            {
+                reason = "能量枢纽功率数据异常";
+                return null;
+            }
+            double ticks = prefabDesc.maxExcEnergy / (double)prefabDesc.exchangeEnergyPerTick;
+            return new Plan
+            {
+                kind = PlanKind.Recipe,
+                description = $"充电 {ItemName(prefabDesc.emptyId)} → {ItemName(prefabDesc.fullId)}，单座每 {ticks / 60.0:0.##} 秒 1 个",
+                items = new[] { prefabDesc.emptyId },
+                itemCounts = new[] { 1 },
+                resultId = prefabDesc.fullId,
+                resultCount = 1,
+                recipeTicks = ticks,
+                statProduced = ItemAmounts.Of(new[] { prefabDesc.fullId }, new[] { 1 }),
+                statConsumed = ItemAmounts.Of(new[] { prefabDesc.emptyId }, new[] { 1 })
+            };
         }
 
         private static bool SlotsMatch(StationStore[] storage, int[] ingredients)
