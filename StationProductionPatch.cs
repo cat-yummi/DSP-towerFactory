@@ -23,6 +23,7 @@ namespace TowerFactory
         private const int ActivateDelayTicks = 60;
         private const int CycleDivisor = 10;
         private const int FirstIngredientSlot = 2;
+        private const string SlotsNotEnoughMessage = "原料格子不够，请加装运输塔扩容mod";
         private const double VeinMinerTicksPerItem = 120.0;
         private const double OilExtractorTicksPerItem = 60.0;
         private const int AdvancedMinerMultiplier = 3;
@@ -369,6 +370,7 @@ namespace TowerFactory
             reason = null;
             int productId = storage[1].itemId;
             bool productFound = false;
+            bool anyRecipeFitsSlots = false;
             foreach (PseudoRecipe pseudo in PseudoRecipes.All)
             {
                 if (pseudo.buildingType != recipeType || !pseudo.outputs.TryGetValue(productId, out int outputCount))
@@ -376,6 +378,7 @@ namespace TowerFactory
                     continue;
                 }
                 productFound = true;
+                anyRecipeFitsSlots |= FitsSlotCount(storage, pseudo.ingredients);
                 if (SlotsMatch(storage, pseudo.ingredients))
                 {
                     return new Plan
@@ -404,6 +407,7 @@ namespace TowerFactory
                     continue;
                 }
                 productFound = true;
+                anyRecipeFitsSlots |= FitsSlotCount(storage, recipe.Items);
                 if (SlotsMatch(storage, recipe.Items))
                 {
                     return new Plan
@@ -420,10 +424,24 @@ namespace TowerFactory
                     };
                 }
             }
-            reason = productFound
-                ? "第三格起的原料与配方顺序不符（或格子不够）"
-                : $"第二格 {ItemName(productId)} 不是该建筑能生产的产品";
+            if (!productFound)
+            {
+                reason = $"第二格 {ItemName(productId)} 不是该建筑能生产的产品";
+            }
+            else if (!anyRecipeFitsSlots)
+            {
+                reason = SlotsNotEnoughMessage;
+            }
+            else
+            {
+                reason = "第三格起的原料与配方顺序不符";
+            }
             return null;
+        }
+
+        private static bool FitsSlotCount(StationStore[] storage, int[] ingredients)
+        {
+            return FirstIngredientSlot + ingredients.Length <= storage.Length;
         }
 
         private static Plan MatchFractionatorPlan(StationStore[] storage, out string reason)
@@ -545,9 +563,14 @@ namespace TowerFactory
                 return null;
             }
 
+            if (!candidates.Any(ingredients => FitsSlotCount(storage, ingredients)))
+            {
+                reason = SlotsNotEnoughMessage;
+                return null;
+            }
             foreach (int[] ingredients in candidates)
             {
-                bool fits = FirstIngredientSlot + ingredients.Length <= storage.Length
+                bool fits = FitsSlotCount(storage, ingredients)
                     && ingredients.Distinct().Count() == ingredients.Length
                     && !ingredients.Contains(buildingSlot.itemId)
                     && !ingredients.Contains(productId);
@@ -557,7 +580,7 @@ namespace TowerFactory
                     return ingredients;
                 }
             }
-            reason = "没有放得下的配方（格子不够或原料与已有物品重复）";
+            reason = "放得下的配方里，原料与塔里已有物品重复";
             return null;
         }
 
