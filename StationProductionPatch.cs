@@ -654,6 +654,7 @@ namespace TowerFactory
             int lastSlot = isAdvanced ? storage.Length - 1 : 1;
             var slots = new List<int>();
             var names = new List<string>();
+            var skipped = new List<string>();
             for (int slot = 1; slot <= lastSlot; slot++)
             {
                 int itemId = storage[slot].itemId;
@@ -661,23 +662,33 @@ namespace TowerFactory
                 {
                     continue;
                 }
+                string slotProblem = null;
                 if (!IsMineral(itemId))
                 {
-                    reason = $"第 {slot + 1} 格 {ItemName(itemId)} 不是采矿机能采的矿物";
-                    return null;
+                    slotProblem = $"第 {slot + 1} 格 {ItemName(itemId)} 不是采矿机能采的矿物";
                 }
-                if (!PlanetHasMineral(factory.planet, itemId))
+                else if (!PlanetHasMineral(factory.planet, itemId))
                 {
-                    reason = $"本行星没有第 {slot + 1} 格 {ItemName(itemId)} 的矿簇";
-                    return null;
+                    slotProblem = $"本行星没有第 {slot + 1} 格 {ItemName(itemId)} 的矿簇";
+                }
+                if (slotProblem != null)
+                {
+                    skipped.Add(slotProblem);
+                    continue;
                 }
                 slots.Add(slot);
                 names.Add(ItemName(itemId));
             }
+            if (slots.Count == 0)
+            {
+                reason = skipped.Count > 0 ? string.Join("；", skipped) : "第二格为空";
+                return null;
+            }
+            string skippedText = skipped.Count > 0 ? $"；跳过：{string.Join("；", skipped)}" : "";
             return new Plan
             {
                 kind = PlanKind.Miner,
-                description = $"{(isAdvanced ? "大型采矿" : "采矿")} {string.Join("、", names)}",
+                description = $"{(isAdvanced ? "大型采矿" : "采矿")} {string.Join("、", names)}{skippedText}",
                 outputSlots = slots.ToArray(),
                 outputMultiplier = isAdvanced ? AdvancedMinerMultiplier : 1,
                 minerTicksPerItem = VeinMinerTicksPerItem
