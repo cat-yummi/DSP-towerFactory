@@ -65,6 +65,10 @@
 * [Dyson Sphere Program](https://store.steampowered.com/app/1366540): The great game
 * [BepInEx](https://bepinex.dev/): Base modding framework
 
+## Author
+
+* cat yummi
+
 </details>
 
 <details>
@@ -130,5 +134,9 @@
 
 * [戴森球计划](https://store.steampowered.com/app/1366540): 伟大的游戏
 * [BepInEx](https://bepinex.dev/): 基础模组框架
+
+## 制作人
+
+* 流浪法师.悠米
 
 </details>
