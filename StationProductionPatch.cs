@@ -13,6 +13,7 @@ namespace TowerFactory
     /// - 采矿机：第二格放本行星有的矿物；大型采矿机以 3 倍速度生产第二格起的全部矿物。
     /// - 射线接收站：第二格放临界光子，从戴森球多余能量中制造光子。
     /// - 分馏塔：第二格放重氢，第三格放氢，每座每半秒把 0.1 个氢转换为重氢。
+    /// - 抽水机：第二格放本行星的海洋物品；原油萃取站：第二格放原油，本行星需有油井。
     /// 配置稳定数秒后开始生产：第一格有几座建筑，就以几倍速度生产。
     /// 生产周期为基础周期的 1/10，每周期生产 ceil(建筑数 / 10) 次。
     /// </summary>
@@ -22,7 +23,8 @@ namespace TowerFactory
         private const int ActivateDelayTicks = 60;
         private const int CycleDivisor = 10;
         private const int FirstIngredientSlot = 2;
-        private const double MinerTicksPerItem = 120.0;
+        private const double VeinMinerTicksPerItem = 120.0;
+        private const double OilExtractorTicksPerItem = 60.0;
         private const int AdvancedMinerMultiplier = 3;
         private const double FractionatorTicksPerItem = 300.0;
         private const float GammaPhotonModeMultiplier = 8f;
@@ -51,6 +53,7 @@ namespace TowerFactory
 
             public int[] outputSlots;
             public int outputMultiplier;
+            public double minerTicksPerItem;
 
             public double photonTicks;
             public long photonHeat;
@@ -164,7 +167,7 @@ namespace TowerFactory
                     return plan.recipeTicks;
                 case PlanKind.Miner:
                     float scale = GameMain.history.miningSpeedScale;
-                    return scale > 0f ? MinerTicksPerItem / scale : 0;
+                    return scale > 0f ? plan.minerTicksPerItem / scale : 0;
                 case PlanKind.Gamma:
                     return plan.photonTicks;
                 default:
@@ -315,7 +318,9 @@ namespace TowerFactory
                 return null;
             }
             bool isMiner = prefabDesc.minerType == EMinerType.Vein || prefabDesc.isVeinCollector;
-            if (!prefabDesc.isAssembler && !prefabDesc.isLab && !prefabDesc.isFractionator && !isMiner && !prefabDesc.gammaRayReceiver)
+            bool isPump = prefabDesc.minerType == EMinerType.Water;
+            bool isOilExtractor = prefabDesc.minerType == EMinerType.Oil;
+            if (!prefabDesc.isAssembler && !prefabDesc.isLab && !prefabDesc.isFractionator && !isMiner && !isPump && !isOilExtractor && !prefabDesc.gammaRayReceiver)
             {
                 return null;
             }
@@ -347,6 +352,14 @@ namespace TowerFactory
             if (isMiner)
             {
                 return MatchMinerPlan(factory, storage, prefabDesc.isVeinCollector, out reason);
+            }
+            if (isPump)
+            {
+                return MatchPumpPlan(factory, storage, prefabDesc, out reason);
+            }
+            if (isOilExtractor)
+            {
+                return MatchOilExtractorPlan(factory, storage, out reason);
             }
             return MatchGammaPlan(factory, storage, prefabDesc, out reason);
         }
@@ -595,7 +608,61 @@ namespace TowerFactory
                 kind = PlanKind.Miner,
                 description = $"{(isAdvanced ? "大型采矿" : "采矿")} {string.Join("、", names)}",
                 outputSlots = slots.ToArray(),
-                outputMultiplier = isAdvanced ? AdvancedMinerMultiplier : 1
+                outputMultiplier = isAdvanced ? AdvancedMinerMultiplier : 1,
+                minerTicksPerItem = VeinMinerTicksPerItem
+            };
+        }
+
+        private static Plan MatchPumpPlan(PlanetFactory factory, StationStore[] storage, PrefabDesc prefabDesc, out string reason)
+        {
+            reason = null;
+            int waterItemId = factory.planet?.waterItemId ?? 0;
+            if (waterItemId <= 0)
+            {
+                reason = "本行星没有可抽取的海洋";
+                return null;
+            }
+            if (storage[1].itemId != waterItemId)
+            {
+                reason = $"第二格应为本行星的海洋物品 {ItemName(waterItemId)}";
+                return null;
+            }
+            if (prefabDesc.minerPeriod <= 0)
+            {
+                reason = "抽水机速度数据异常";
+                return null;
+            }
+            return new Plan
+            {
+                kind = PlanKind.Miner,
+                description = $"抽取 {ItemName(waterItemId)}",
+                outputSlots = new[] { 1 },
+                outputMultiplier = 1,
+                minerTicksPerItem = prefabDesc.minerPeriod / 10000.0
+            };
+        }
+
+        private static Plan MatchOilExtractorPlan(PlanetFactory factory, StationStore[] storage, out string reason)
+        {
+            reason = null;
+            int itemId = storage[1].itemId;
+            if (LDB.veins.GetVeinTypeByItemId(itemId) != EVeinType.Oil)
+            {
+                reason = $"第二格 {ItemName(itemId)} 不是原油";
+                return null;
+            }
+            if (!PlanetHasMineral(factory.planet, itemId))
+            {
+                reason = "本行星没有油井";
+                return null;
+            }
+            return new Plan
+            {
+                kind = PlanKind.Miner,
+                description = $"萃取 {ItemName(itemId)}",
+                outputSlots = new[] { 1 },
+                outputMultiplier = 1,
+                minerTicksPerItem = OilExtractorTicksPerItem
             };
         }
 

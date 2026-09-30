@@ -32,8 +32,9 @@
 		<R2ModmanPluginDir Condition=" '$(R2ModmanPluginDir)' == '' ">$(APPDATA)\r2modmanPlus-local\DysonSphereProgram\profiles\Default\BepInEx\plugins\Unknown-TowerFactory</R2ModmanPluginDir>
 	</PropertyGroup>
 	<Target Name="DeployToR2Modman" AfterTargets="Build" Condition="Exists('$(R2ModmanPluginDir)')">
-		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(R2ModmanPluginDir)" ContinueOnError="WarnAndContinue" />
-		<Message Importance="high" Text="Deployed $(TargetFileName) -> $(R2ModmanPluginDir)" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(R2ModmanPluginDir)" Retries="0" ContinueOnError="WarnAndContinue" />
+		<Message Condition=" '$(MSBuildLastTaskResult)' == 'true' " Importance="high" Text="Deployed $(TargetFileName) -> $(R2ModmanPluginDir)" />
+		<Warning Condition=" '$(MSBuildLastTaskResult)' != 'true' " Text="未部署到 r2modman：游戏可能正在运行，关闭游戏后重新编译即可" />
 	</Target>
 	<ItemGroup>
 		<PackageReference Include="BepInEx.Core" Version="5.4.17" />
