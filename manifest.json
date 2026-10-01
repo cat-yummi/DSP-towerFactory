@@ -2,7 +2,7 @@
   "name": "TowerFactory",
   "description": "Logistics stations can produce items | 运输塔也能生产物资",
   "version_number": "1.1.0",
-  "website_url": "",
+  "website_url": "https://github.com/cat-yummi/DSP-towerFactory",
   "dependencies": [
     "xiaoye97-BepInEx-5.4.17",
     "cat_yummi-BigTower-1.1.0"
