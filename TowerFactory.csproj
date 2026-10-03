@@ -37,6 +37,9 @@
 		<Message Condition=" '$(MSBuildLastTaskResult)' == 'true' " Importance="high" Text="Deployed $(TargetFileName) + icon/README/manifest -> $(R2ModmanPluginDir)" />
 		<Warning Condition=" '$(MSBuildLastTaskResult)' != 'true' " Text="未部署到 r2modman：游戏可能正在运行，关闭游戏后重新编译即可" />
 	</Target>
+	<Target Name="PackageThunderstore" AfterTargets="DeployToR2Modman" Condition="'$(Configuration)' == 'Release'">
+		<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)package_thunderstore.ps1&quot;" />
+	</Target>
 	<ItemGroup>
 		<PackageReference Include="BepInEx.Core" Version="5.4.17" />
 		<PackageReference Include="BepInEx.PluginInfoProps" Version="1.0.0" />
