@@ -20,7 +20,7 @@ namespace TowerFactory
 
             harmony.PatchAll(typeof(StationProductionPatch));
             harmony.PatchAll(typeof(UIStationWindowPatch));
-            harmony.PatchAll(typeof(ElectromagnetismStationRewardPatch));
+            harmony.PatchAll(typeof(TechStationGiftPatch));
 
             Log.LogInfo($"{PLUGIN_NAME} v{PLUGIN_VERSION} 已加载");
         }

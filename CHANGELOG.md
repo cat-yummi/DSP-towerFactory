@@ -6,13 +6,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- Unlocking **Electromagnetism** (tech 1001) grants **3 planetary logistics stations** (item 2103) to your inventory. Logistics tech and recipes are **not** unlocked, to avoid tech-tree issues.
-- One-time grant per save (feature key `99001001`).
+- **Station gifts on tech unlock** (2 planetary logistics stations each, item 2103, inventory only; logistics tech/recipes are **not** unlocked): Electromagnetics **1001**, Basic assembling **1201**, Electromagnetic matrix **1002**, Automatic metallurgy **1401**, Basic logistics system **1601**. One grant per tech per save (`featureKey` = `99001000 + techId`).
 
 ### 新增
 
-- 解锁科技 **「电磁学」**（1001）时，背包获得 **3 个行星内物流运输塔**（2103）；**不**解锁物流科技与配方，避免科技树异常。
-- 每个存档仅发放一次（featureKey `99001001`）。
+- **科技解锁送塔**（每项 **2** 个行星内物流运输塔，仅进背包，不解锁物流科技/配方）：电磁学 **1001**、基础制造 **1201**、电磁矩阵 **1002**、自动化冶金 **1401**、基础物流系统 **1601**；每科技每存档一次（`featureKey` = `99001000 + techId`）。
 
 ## [1.1.1] - 2026-10-03
 
