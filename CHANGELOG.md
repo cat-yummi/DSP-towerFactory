@@ -1,43 +1,53 @@
 # Changelog
 
-本文件记录面向玩家的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [1.1.2] - 2026-10-04
+
+### Added
+
+- Unlocking **Electromagnetism** (tech 1001) grants **3 planetary logistics stations** (item 2103) to your inventory. Logistics tech and recipes are **not** unlocked, to avoid tech-tree issues.
+- One-time grant per save (feature key `99001001`).
+
+### 新增
+
+- 解锁科技 **「电磁学」**（1001）时，背包获得 **3 个行星内物流运输塔**（2103）；**不**解锁物流科技与配方，避免科技树异常。
+- 每个存档仅发放一次（featureKey `99001001`）。
 
 ## [1.1.1] - 2026-10-03
 
-### 修复
+### Fixed / 修复
 
-- **自产制造台**：第二格为空时产物写入第一格（不再往空的第二格堆叠导致不生产）。
-- **自产制造台**：第一格制造台数量为 0 时也可按最低 100 座倍率开工（自举量产）。
-- **自动填原料**：制造台第二格为空时与塔厂规则一致，可自动填配方原料；填完后刷新运输塔界面。
-- **自动填原料**：`SetStationStorage` 传入玩家，与原版行为一致。
+- **Self-assembler towers / 自产制造台**: With an empty slot 2, output goes to slot 1 (not the empty product slot).
+- **Self-assembler towers / 自产制造台**: Production works with **0** assemblers in slot 1 at the minimum **100-building** rate.
+- **Auto-fill / 自动填原料**: Empty slot 2 on assemblers; UI refresh after fill; `SetStationStorage` uses the main player.
 
-### 构建
+### Build / 构建
 
-- Release 编译后自动生成 `bin/Release/TowerFactory.zip`。
+- Release builds automatically produce `bin/Release/TowerFactory.zip`.
 
 ## [1.1.0] - 2026-09-30
 
-### 新增
+### Added / 新增
 
-- Thunderstore 依赖 **BigTower 1.1.0**（原料格扩容；格子不够时会提示安装扩容 mod）。
-- 双语 README（soarqin 式折叠结构）、作者署名、封面图标（运输塔 + 制造台叠放）。
-- 填原料按钮与失败提示：非中文客户端默认英文。
+- Thunderstore dependency **BigTower 1.1.0**.
+- Bilingual README, author credit, composite icon.
+- Fill-ingredients button and tips: English by default, Chinese on zh-CN.
 
-### 变更
+### Changed / 变更
 
-- README 中文标语增加「轮椅」说明。
+- Chinese README tagline adds「轮椅」.
 
 ## [1.0.0] - 2026-09-30
 
-### 新增
+### Added / 新增
 
-- **塔厂**：运输塔第一格放生产建筑（仓储），第二格产品、后续格按配方顺序放原料；配置稳定 **1 秒**后按第一格建筑数量倍率生产，周期为配方 **1/10**，每周期次数 `ceil(建筑数/10)`；忽略增产剂、塔厂不耗电。
-- **生产**：制造台/熔炉/化工厂/精炼厂/对撞机/矩阵研究站；副产物丢弃但计入产量；伪配方（能量矩阵、精炼油链、卡西米尔可燃冰变体等）。
-- **采集**：采矿机、大型采矿机（无效格单独跳过）、抽水机、原油萃取站；不耗矿脉。
-- **其它建筑**：射线接收站（戴森球余电）、分馏塔、能量枢纽（仅充电、不耗电）。
-- 运输塔窗口 **「塔厂：填原料」** 按钮（第三格起全空时填入，伪配方优先）。
-- 依赖 **BepInEx 5.4.17**（xiaoye97）。
+- **Tower Factory** core: storage building in slot 1, product in slot 2, ingredients after; 1 s activation; 1/10 cycle time; `ceil(N/10)` crafts per cycle; no power; ignores proliferator.
+- Production, pseudo-recipes, mining, pumps, oil, photons, fractionator, energy exchanger (charge only).
+- **Fill ingredients** button in the station window.
+- Requires **BepInEx 5.4.17** (xiaoye97).
 
+[1.1.2]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/cat-yummi/DSP-towerFactory/releases/tag/v1.0.0
