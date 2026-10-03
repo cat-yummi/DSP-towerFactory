@@ -149,9 +149,13 @@ namespace TowerFactory
             int buildingCount = storage[0].count;
             if (buildingCount <= 0)
             {
-                return;
+                if (plan.minBuildingCount <= 0)
+                {
+                    return;
+                }
+                buildingCount = plan.minBuildingCount;
             }
-            if (plan.minBuildingCount > 0)
+            else if (plan.minBuildingCount > 0)
             {
                 buildingCount = Math.Max(buildingCount, plan.minBuildingCount);
             }
