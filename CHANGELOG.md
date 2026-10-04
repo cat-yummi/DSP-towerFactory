@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.0] - 2026-10-04
+
+### Added / 新增
+
+- **Dyson towers / 戴森塔厂**: Ejector in slot 1 → direct **cell points** (solar sails, stat 11903), no swarm; silo → direct **structure points** (rockets, stat 11902). Cell construction requires node `sp == spMax` (vanilla rule).
+- **Dyson swarm cap / 戴森云上限**: Hard cap **10 000** swarm sails via `AddSolarSail`.
+- **Matrix research tower / 矩阵研究塔**: Lab in slot 1, matrices from slot 2 onward; feeds UI research queue. Non–universe-matrix tech: instant level when matrices suffice. **Universe-matrix-only** tech: **1 matrix (6006) per lab per second**.
+- Re-validate all stations as tower factories on **game load** (`GameMain.Begin`).
+
+### Fixed / 修复
+
+- Ejector cell points: all nodes per wave; sail count cannot go negative; consume capped to available sails.
+- **Crash**: `AddTechHash` queued to main thread (`GameMain.Update`) — fixes unlock UI crash from parallel transport tick.
+- `build_thunderstore.ps1` runs `package_thunderstore.ps1` after Release build.
+
 ## [1.1.2] - 2026-10-04
 
 ### Added
@@ -45,6 +60,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fill ingredients** button in the station window.
 - Requires **BepInEx 5.4.17** (xiaoye97).
 
+[1.2.0]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/cat-yummi/DSP-towerFactory/compare/v1.0.0...v1.1.0
