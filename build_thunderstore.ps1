@@ -9,3 +9,8 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Write-Host "Build successful!" -ForegroundColor Green
+
+& (Join-Path $PSScriptRoot "package_thunderstore.ps1")
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
