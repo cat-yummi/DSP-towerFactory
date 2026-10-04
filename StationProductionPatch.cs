@@ -26,6 +26,8 @@ namespace TowerFactory
         private const int ActivateDelayTicks = 60;
         private const int CycleDivisor = 10;
         private const int FirstIngredientSlot = 2;
+        /// <summary>矩阵研究塔：第二格起可放研究矩阵（含供应设置的第二格）。</summary>
+        private const int TechResearchMatrixFirstSlot = 1;
         private const string SlotsNotEnoughMessage = "原料格子不够，请加装运输塔扩容mod";
         private const double VeinMinerTicksPerItem = 120.0;
         private const double OilExtractorTicksPerItem = 60.0;
@@ -304,10 +306,10 @@ namespace TowerFactory
             return true;
         }
 
-        private static int CountMatrixInStation(StationStore[] storage, int matrixId)
+        private static int CountMatrixInStation(StationStore[] storage, int matrixId, int firstSlot = FirstIngredientSlot)
         {
             int total = 0;
-            for (int s = FirstIngredientSlot; s < storage.Length; s++)
+            for (int s = firstSlot; s < storage.Length; s++)
             {
                 if (storage[s].itemId == matrixId)
                 {
@@ -315,6 +317,33 @@ namespace TowerFactory
                 }
             }
             return total;
+        }
+
+        private static int CountTechResearchMatrix(StationStore[] storage, int matrixId)
+        {
+            return CountMatrixInStation(storage, matrixId, TechResearchMatrixFirstSlot);
+        }
+
+        /// <summary>第二格为空，或第二格仅为研究矩阵且第三格起无配方原料。</summary>
+        private static bool LabStorageIsResearchFeed(StationStore[] storage)
+        {
+            if (storage[1].itemId <= 0)
+            {
+                return true;
+            }
+            if (!IsResearchMatrix(storage[1].itemId))
+            {
+                return false;
+            }
+            for (int s = FirstIngredientSlot; s < storage.Length; s++)
+            {
+                int itemId = storage[s].itemId;
+                if (itemId > 0 && !IsResearchMatrix(itemId))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static bool TryComputeMatrixNeeds(TechProto tech, long remainingHash, int[] countsOut)
@@ -346,7 +375,7 @@ namespace TowerFactory
             }
             for (int i = 0; i < ResearchMatrixIds.Length; i++)
             {
-                if (need[i] > 0 && CountMatrixInStation(storage, ResearchMatrixIds[i]) < need[i])
+                if (need[i] > 0 && CountTechResearchMatrix(storage, ResearchMatrixIds[i]) < need[i])
                 {
                     return false;
                 }
@@ -367,7 +396,7 @@ namespace TowerFactory
                 {
                     continue;
                 }
-                if (CountMatrixInStation(storage, ResearchMatrixIds[i]) < need[i])
+                if (CountTechResearchMatrix(storage, ResearchMatrixIds[i]) < need[i])
                 {
                     return false;
                 }
@@ -380,7 +409,7 @@ namespace TowerFactory
                 {
                     continue;
                 }
-                for (int s = FirstIngredientSlot; s < storage.Length && left > 0; s++)
+                for (int s = TechResearchMatrixFirstSlot; s < storage.Length && left > 0; s++)
                 {
                     ref StationStore slot = ref storage[s];
                     if (slot.itemId != matrixId)
@@ -421,14 +450,14 @@ namespace TowerFactory
             return (int)Math.Min(cost, int.MaxValue);
         }
 
-        private static bool TryConsumeMatrixAmount(StationStore[] storage, int matrixId, int amount, int[] consumeRegister)
+        private static bool TryConsumeMatrixAmount(StationStore[] storage, int matrixId, int amount, int[] consumeRegister, int firstSlot = FirstIngredientSlot)
         {
-            if (amount <= 0 || CountMatrixInStation(storage, matrixId) < amount)
+            if (amount <= 0 || CountMatrixInStation(storage, matrixId, firstSlot) < amount)
             {
                 return false;
             }
             int left = amount;
-            for (int s = FirstIngredientSlot; s < storage.Length && left > 0; s++)
+            for (int s = firstSlot; s < storage.Length && left > 0; s++)
             {
                 ref StationStore slot = ref storage[s];
                 if (slot.itemId != matrixId)
@@ -521,7 +550,7 @@ namespace TowerFactory
             {
                 return;
             }
-            int consume = Math.Min(buildingCount, CountMatrixInStation(storage, 6006));
+            int consume = Math.Min(buildingCount, CountTechResearchMatrix(storage, 6006));
             if (consume <= 0)
             {
                 return;
@@ -537,10 +566,10 @@ namespace TowerFactory
                 consume = itemPoints > 0
                     ? (int)((remaining * itemPoints + MatrixPointPerItem - 1) / MatrixPointPerItem)
                     : (int)Math.Min(remaining, consume);
-                consume = Math.Max(1, Math.Min(consume, Math.Min(buildingCount, CountMatrixInStation(storage, 6006))));
+                consume = Math.Max(1, Math.Min(consume, Math.Min(buildingCount, CountTechResearchMatrix(storage, 6006))));
                 hashAdd = Math.Min(HashFromUniverseMatrixCount(tech, consume), remaining);
             }
-            if (hashAdd <= 0 || !TryConsumeMatrixAmount(storage, 6006, consume, consumeRegister))
+            if (hashAdd <= 0 || !TryConsumeMatrixAmount(storage, 6006, consume, consumeRegister, TechResearchMatrixFirstSlot))
             {
                 return;
             }
@@ -927,7 +956,7 @@ namespace TowerFactory
             {
                 return MatchDysonPlan(factory, storage, prefabDesc, out reason);
             }
-            if (prefabDesc.isLab && storage[1].itemId <= 0)
+            if (prefabDesc.isLab && LabStorageIsResearchFeed(storage))
             {
                 return MatchTechResearchPlan(storage, out reason);
             }
@@ -1058,7 +1087,7 @@ namespace TowerFactory
         private static Plan MatchTechResearchPlan(StationStore[] storage, out string reason)
         {
             reason = null;
-            for (int s = FirstIngredientSlot; s < storage.Length; s++)
+            for (int s = TechResearchMatrixFirstSlot; s < storage.Length; s++)
             {
                 int itemId = storage[s].itemId;
                 if (itemId <= 0)
@@ -1077,8 +1106,8 @@ namespace TowerFactory
             {
                 kind = PlanKind.TechResearch,
                 description = Tr(
-                    "矩阵研究塔（UI 研究队列当前科技）",
-                    "Matrix research tower (UI research queue head)"),
+                    "矩阵研究塔（第二格起放矩阵，队列当前科技）",
+                    "Matrix research tower (matrices from slot 2, UI queue head)"),
                 recipeTicks = TechResearchTicksPerCycle
             };
         }
