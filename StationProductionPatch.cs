@@ -14,7 +14,7 @@ namespace TowerFactory
     /// - 射线接收站：第二格放临界光子，从戴森球多余能量中制造光子。
     /// - 弹射器：第二格太阳帆，直接增加戴森壳细胞点数（等同吸收太阳帆，不入戴森云）。
     /// - 发射井：第二格小运载火箭，直接增加结构点数（等同火箭抵达）。
-    /// - 矩阵研究站且第二格为空：第三格起放研究矩阵，为 UI 队列当前科技供料（非纯宇宙矩阵且够料则一次完成等级；纯宇宙矩阵科技按秒扣矩阵涨哈希）。
+    /// - 矩阵研究站且第二格为空：第三格起放研究矩阵，为 UI 队列当前科技供料（非纯宇宙矩阵且够料则一次完成等级；纯宇宙矩阵科技每秒每座研究站消耗 1 个宇宙矩阵）。
     /// - 分馏塔：第二格放重氢，第三格放氢，每座每半秒把 0.1 个氢转换为重氢。
     /// - 抽水机：第二格放本行星的海洋物品；原油萃取站：第二格放原油，本行星需有油井。
     /// 配置稳定数秒后开始生产：第一格有几座建筑，就以几倍速度生产。
@@ -228,7 +228,7 @@ namespace TowerFactory
                         CraftDyson(factory, station, plan, batch, buildingCount, consumeRegister);
                         break;
                     case PlanKind.TechResearch:
-                        CraftTechResearch(station, batch, consumeRegister);
+                        CraftTechResearch(station, buildingCount, consumeRegister);
                         break;
                 }
             }
@@ -454,7 +454,7 @@ namespace TowerFactory
             return true;
         }
 
-        private static void CraftTechResearch(StationComponent station, int batch, int[] consumeRegister)
+        private static void CraftTechResearch(StationComponent station, int buildingCount, int[] consumeRegister)
         {
             StationStore[] storage = station.storage;
             lock (storage)
@@ -467,7 +467,7 @@ namespace TowerFactory
                     }
                     if (IsUniverseMatrixOnlyTech(tech))
                     {
-                        CraftUniverseMatrixResearch(storage, tech, batch, consumeRegister);
+                        CraftUniverseMatrixResearch(storage, tech, buildingCount, consumeRegister);
                         return;
                     }
                     while (TryGetCurrentLabTech(out tech, out ts))
@@ -495,21 +495,52 @@ namespace TowerFactory
             }
         }
 
-        private static void CraftUniverseMatrixResearch(StationStore[] storage, TechProto tech, int batch, int[] consumeRegister)
+        private static long HashFromUniverseMatrixCount(TechProto tech, int matrixCount)
+        {
+            if (matrixCount <= 0 || tech.ItemPoints == null || tech.ItemPoints.Length == 0)
+            {
+                return 0;
+            }
+            int itemPoints = tech.ItemPoints[0];
+            if (itemPoints <= 0)
+            {
+                return matrixCount;
+            }
+            return matrixCount * (long)MatrixPointPerItem / itemPoints;
+        }
+
+        /// <summary>纯宇宙矩阵科技：每秒每座矩阵研究站（第一格）消耗 1 个宇宙矩阵 6006。</summary>
+        private static void CraftUniverseMatrixResearch(StationStore[] storage, TechProto tech, int buildingCount, int[] consumeRegister)
         {
             if (!GameMain.history.techStates.TryGetValue(GameMain.history.currentTech, out TechState ts))
             {
                 return;
             }
             long remaining = ts.hashNeeded - ts.hashUploaded;
-            if (remaining <= 0)
+            if (remaining <= 0 || buildingCount <= 0)
             {
                 return;
             }
-            int hashAdd = Math.Max(1, batch) * Math.Max(1, (int)GameMain.history.techSpeed);
-            hashAdd = (int)Math.Min(hashAdd, remaining);
-            int matrixNeed = MatrixCostForHash(tech, hashAdd);
-            if (!TryConsumeMatrixAmount(storage, 6006, matrixNeed, consumeRegister))
+            int consume = Math.Min(buildingCount, CountMatrixInStation(storage, 6006));
+            if (consume <= 0)
+            {
+                return;
+            }
+            long hashAdd = HashFromUniverseMatrixCount(tech, consume);
+            if (hashAdd <= 0)
+            {
+                hashAdd = consume;
+            }
+            if (hashAdd > remaining)
+            {
+                int itemPoints = tech.ItemPoints[0];
+                consume = itemPoints > 0
+                    ? (int)((remaining * itemPoints + MatrixPointPerItem - 1) / MatrixPointPerItem)
+                    : (int)Math.Min(remaining, consume);
+                consume = Math.Max(1, Math.Min(consume, Math.Min(buildingCount, CountMatrixInStation(storage, 6006))));
+                hashAdd = Math.Min(HashFromUniverseMatrixCount(tech, consume), remaining);
+            }
+            if (hashAdd <= 0 || !TryConsumeMatrixAmount(storage, 6006, consume, consumeRegister))
             {
                 return;
             }
