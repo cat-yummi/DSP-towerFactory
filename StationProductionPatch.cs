@@ -12,6 +12,9 @@ namespace TowerFactory
     /// - 制造类建筑 / 研究站：第二格放产品，后续格按配方顺序放原料。
     /// - 采矿机：第二格放本行星有的矿物；大型采矿机以 3 倍速度生产第二格起的全部矿物。
     /// - 射线接收站：第二格放临界光子，从戴森球多余能量中制造光子。
+    /// - 弹射器：第二格太阳帆，直接增加戴森壳细胞点数（等同吸收太阳帆，不入戴森云）。
+    /// - 发射井：第二格小运载火箭，直接增加结构点数（等同火箭抵达）。
+    /// - 矩阵研究站且第二格为空：第三格起放研究矩阵，为 UI 队列当前科技供料（非纯宇宙矩阵且够料则一次完成等级；纯宇宙矩阵科技按秒扣矩阵涨哈希）。
     /// - 分馏塔：第二格放重氢，第三格放氢，每座每半秒把 0.1 个氢转换为重氢。
     /// - 抽水机：第二格放本行星的海洋物品；原油萃取站：第二格放原油，本行星需有油井。
     /// 配置稳定数秒后开始生产：第一格有几座建筑，就以几倍速度生产。
@@ -32,12 +35,17 @@ namespace TowerFactory
         private const float GammaPhotonModeMultiplier = 8f;
         private const float GammaFullWarmupMultiplier = 2.5f;
         private const float GammaFullWarmupLossFactor = 0.6f;
+        private const double TechResearchTicksPerCycle = 600.0;
+        private const int MatrixPointPerItem = 3600;
+        private static readonly int[] ResearchMatrixIds = { 6001, 6002, 6003, 6004, 6005, 6006 };
 
         private enum PlanKind
         {
             Recipe,
             Miner,
-            Gamma
+            Gamma,
+            Dyson,
+            TechResearch
         }
 
         private class Plan
@@ -59,6 +67,10 @@ namespace TowerFactory
 
             public double photonTicks;
             public long photonHeat;
+
+            public int dysonBulletId;
+            /// <summary>弹射器为细胞点（太阳帆）；发射井为结构点（火箭）。</summary>
+            public bool dysonCellPoints;
 
             /// <summary>第二格为空时视同产品为第一格同款制造台，产物写入第一格。</summary>
             public bool implicitSlot2Product;
@@ -185,6 +197,12 @@ namespace TowerFactory
                     case PlanKind.Gamma:
                         CraftGamma(station, state, plan, batch, productRegister);
                         break;
+                    case PlanKind.Dyson:
+                        CraftDyson(factory, station, plan, batch, buildingCount, consumeRegister);
+                        break;
+                    case PlanKind.TechResearch:
+                        CraftTechResearch(station, batch, consumeRegister);
+                        break;
                 }
             }
         }
@@ -200,9 +218,444 @@ namespace TowerFactory
                     return scale > 0f ? plan.minerTicksPerItem / scale : 0;
                 case PlanKind.Gamma:
                     return plan.photonTicks;
+                case PlanKind.Dyson:
+                    return plan.dysonCellPoints ? CycleDivisor : plan.recipeTicks;
+                case PlanKind.TechResearch:
+                    return plan.recipeTicks;
                 default:
                     return 0;
             }
+        }
+
+        private static bool IsResearchMatrix(int itemId)
+        {
+            for (int i = 0; i < ResearchMatrixIds.Length; i++)
+            {
+                if (ResearchMatrixIds[i] == itemId)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsUniverseMatrixOnlyTech(TechProto tech)
+        {
+            if (tech?.Items == null || tech.Items.Length == 0)
+            {
+                return false;
+            }
+            for (int i = 0; i < tech.Items.Length; i++)
+            {
+                if (tech.Items[i] != 6006)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool TryGetCurrentLabTech(out TechProto tech, out TechState state)
+        {
+            tech = null;
+            state = default;
+            GameHistoryData history = GameMain.history;
+            int techId = history.currentTech;
+            if (techId <= 0)
+            {
+                return false;
+            }
+            tech = LDB.techs.Select(techId);
+            if (tech == null || !tech.IsLabTech || (tech.PropertyOverrideItems != null && tech.PropertyOverrideItems.Length > 0))
+            {
+                return false;
+            }
+            if (!history.techStates.TryGetValue(techId, out state) || state.unlocked)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        private static int CountMatrixInStation(StationStore[] storage, int matrixId)
+        {
+            int total = 0;
+            for (int s = FirstIngredientSlot; s < storage.Length; s++)
+            {
+                if (storage[s].itemId == matrixId)
+                {
+                    total += storage[s].count;
+                }
+            }
+            return total;
+        }
+
+        private static bool TryComputeMatrixNeeds(TechProto tech, long remainingHash, int[] countsOut)
+        {
+            Array.Clear(countsOut, 0, countsOut.Length);
+            if (remainingHash <= 0 || tech.Items == null)
+            {
+                return false;
+            }
+            for (int i = 0; i < tech.Items.Length; i++)
+            {
+                int itemId = tech.Items[i];
+                int idx = Array.IndexOf(ResearchMatrixIds, itemId);
+                if (idx < 0)
+                {
+                    return false;
+                }
+                countsOut[idx] = (int)((remainingHash * (long)tech.ItemPoints[i]) / MatrixPointPerItem);
+            }
+            return true;
+        }
+
+        private static bool StationHasMatrices(StationStore[] storage, TechProto tech, long remainingHash)
+        {
+            int[] need = new int[ResearchMatrixIds.Length];
+            if (!TryComputeMatrixNeeds(tech, remainingHash, need))
+            {
+                return false;
+            }
+            for (int i = 0; i < ResearchMatrixIds.Length; i++)
+            {
+                if (need[i] > 0 && CountMatrixInStation(storage, ResearchMatrixIds[i]) < need[i])
+                {
+                    return false;
+                }
+            }
+            return need.Any(n => n > 0);
+        }
+
+        private static bool TryConsumeMatricesFromStation(StationStore[] storage, TechProto tech, long remainingHash, int[] consumeRegister)
+        {
+            int[] need = new int[ResearchMatrixIds.Length];
+            if (!TryComputeMatrixNeeds(tech, remainingHash, need))
+            {
+                return false;
+            }
+            for (int i = 0; i < ResearchMatrixIds.Length; i++)
+            {
+                if (need[i] <= 0)
+                {
+                    continue;
+                }
+                if (CountMatrixInStation(storage, ResearchMatrixIds[i]) < need[i])
+                {
+                    return false;
+                }
+            }
+            for (int i = 0; i < ResearchMatrixIds.Length; i++)
+            {
+                int matrixId = ResearchMatrixIds[i];
+                int left = need[i];
+                if (left <= 0)
+                {
+                    continue;
+                }
+                for (int s = FirstIngredientSlot; s < storage.Length && left > 0; s++)
+                {
+                    ref StationStore slot = ref storage[s];
+                    if (slot.itemId != matrixId)
+                    {
+                        continue;
+                    }
+                    int take = Math.Min(left, slot.count);
+                    slot.count -= take;
+                    if (slot.inc > slot.count)
+                    {
+                        slot.inc = slot.count;
+                    }
+                    left -= take;
+                }
+                if (left > 0)
+                {
+                    return false;
+                }
+                lock (consumeRegister)
+                {
+                    consumeRegister[matrixId] += need[i];
+                }
+            }
+            return true;
+        }
+
+        private static int MatrixCostForHash(TechProto tech, long hashAmount)
+        {
+            if (hashAmount <= 0 || tech.Items == null || tech.Items.Length == 0)
+            {
+                return 0;
+            }
+            long cost = (hashAmount * (long)tech.ItemPoints[0]) / MatrixPointPerItem;
+            if (cost <= 0 && hashAmount > 0)
+            {
+                cost = 1;
+            }
+            return (int)Math.Min(cost, int.MaxValue);
+        }
+
+        private static bool TryConsumeMatrixAmount(StationStore[] storage, int matrixId, int amount, int[] consumeRegister)
+        {
+            if (amount <= 0 || CountMatrixInStation(storage, matrixId) < amount)
+            {
+                return false;
+            }
+            int left = amount;
+            for (int s = FirstIngredientSlot; s < storage.Length && left > 0; s++)
+            {
+                ref StationStore slot = ref storage[s];
+                if (slot.itemId != matrixId)
+                {
+                    continue;
+                }
+                int take = Math.Min(left, slot.count);
+                slot.count -= take;
+                if (slot.inc > slot.count)
+                {
+                    slot.inc = slot.count;
+                }
+                left -= take;
+            }
+            if (left > 0)
+            {
+                return false;
+            }
+            lock (consumeRegister)
+            {
+                consumeRegister[matrixId] += amount;
+            }
+            return true;
+        }
+
+        private static void CraftTechResearch(StationComponent station, int batch, int[] consumeRegister)
+        {
+            StationStore[] storage = station.storage;
+            lock (storage)
+            {
+                lock (GameMain.history)
+                {
+                    if (!TryGetCurrentLabTech(out TechProto tech, out TechState ts))
+                    {
+                        return;
+                    }
+                    if (IsUniverseMatrixOnlyTech(tech))
+                    {
+                        CraftUniverseMatrixResearch(storage, tech, batch, consumeRegister);
+                        return;
+                    }
+                    while (TryGetCurrentLabTech(out tech, out ts))
+                    {
+                        if (IsUniverseMatrixOnlyTech(tech))
+                        {
+                            break;
+                        }
+                        long remaining = ts.hashNeeded - ts.hashUploaded;
+                        if (remaining <= 0)
+                        {
+                            break;
+                        }
+                        if (!StationHasMatrices(storage, tech, remaining))
+                        {
+                            break;
+                        }
+                        if (!TryConsumeMatricesFromStation(storage, tech, remaining, consumeRegister))
+                        {
+                            break;
+                        }
+                        GameMain.history.AddTechHash(remaining);
+                    }
+                }
+            }
+        }
+
+        private static void CraftUniverseMatrixResearch(StationStore[] storage, TechProto tech, int batch, int[] consumeRegister)
+        {
+            if (!GameMain.history.techStates.TryGetValue(GameMain.history.currentTech, out TechState ts))
+            {
+                return;
+            }
+            long remaining = ts.hashNeeded - ts.hashUploaded;
+            if (remaining <= 0)
+            {
+                return;
+            }
+            int hashAdd = Math.Max(1, batch) * Math.Max(1, (int)GameMain.history.techSpeed);
+            hashAdd = (int)Math.Min(hashAdd, remaining);
+            int matrixNeed = MatrixCostForHash(tech, hashAdd);
+            if (!TryConsumeMatrixAmount(storage, 6006, matrixNeed, consumeRegister))
+            {
+                return;
+            }
+            GameMain.history.AddTechHash(hashAdd);
+        }
+
+        private static bool SphereHasStructureWork(DysonSphere sphere)
+        {
+            return sphere.GetAutoNodeCount() > 0;
+        }
+
+        private static bool SphereHasCellWork(DysonSphere sphere)
+        {
+            for (int i = 1; i < sphere.layersIdBased.Length; i++)
+            {
+                DysonSphereLayer layer = sphere.layersIdBased[i];
+                if (layer == null || layer.id != i)
+                {
+                    continue;
+                }
+                for (int j = 1; j < layer.nodeCursor; j++)
+                {
+                    DysonNode node = layer.nodePool[j];
+                    if (node != null && node.id == j && node.cpReqOrder > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>对壳面上每个仍有细胞点需求的节点各尝试一次（单个失败不阻塞其它节点）。</summary>
+        private static int TryConstructCellPointWave(DysonSphere sphere)
+        {
+            int waveBuilt = 0;
+            for (int i = 1; i < sphere.layersIdBased.Length; i++)
+            {
+                DysonSphereLayer layer = sphere.layersIdBased[i];
+                if (layer == null || layer.id != i)
+                {
+                    continue;
+                }
+                for (int j = 1; j < layer.nodeCursor; j++)
+                {
+                    DysonNode node = layer.nodePool[j];
+                    if (node == null || node.id != j || node.cpReqOrder <= 0)
+                    {
+                        continue;
+                    }
+                    node.cpOrdered++;
+                    DysonShell shell = node.ConstructCp();
+                    if (shell == null)
+                    {
+                        continue;
+                    }
+                    sphere.needRecalculatePower = true;
+                    int[] productRegister = sphere.productRegister;
+                    if (productRegister != null)
+                    {
+                        lock (productRegister)
+                        {
+                            productRegister[11903]++;
+                        }
+                    }
+                    waveBuilt++;
+                }
+            }
+            return waveBuilt;
+        }
+
+        /// <summary>等同火箭抵达：结构点 sp（统计 11902）。</summary>
+        private static bool TryConstructStructurePoint(DysonSphere sphere, int autoNodeIndex)
+        {
+            if (sphere.GetAutoNodeCount() <= 0)
+            {
+                return false;
+            }
+            DysonNode node = sphere.GetAutoDysonNode(autoNodeIndex);
+            sphere.OrderConstructSp(node);
+            object built = node.ConstructSp();
+            if (built == null)
+            {
+                return false;
+            }
+            sphere.needRecalculatePower = true;
+            if (built is DysonNode builtNode)
+            {
+                sphere.UpdateProgress(builtNode);
+            }
+            else if (built is DysonFrame builtFrame)
+            {
+                sphere.UpdateProgress(builtFrame);
+            }
+            int[] productRegister = sphere.productRegister;
+            if (productRegister != null)
+            {
+                lock (productRegister)
+                {
+                    productRegister[11902]++;
+                }
+            }
+            return true;
+        }
+
+        private static void CraftDyson(PlanetFactory factory, StationComponent station, Plan plan, int batch, int buildingCount, int[] consumeRegister)
+        {
+            DysonSphere sphere = factory.dysonSphere;
+            if (sphere == null)
+            {
+                return;
+            }
+            StationStore[] storage = station.storage;
+            int built = 0;
+            lock (storage)
+            {
+                if (storage[1].itemId != plan.dysonBulletId || storage[1].count <= 0)
+                {
+                    return;
+                }
+            }
+
+            lock (sphere.dysonSphere_mx)
+            {
+                if (plan.dysonCellPoints)
+                {
+                    while (SphereHasCellWork(sphere))
+                    {
+                        lock (storage)
+                        {
+                            if (storage[1].itemId != plan.dysonBulletId || storage[1].count <= built)
+                            {
+                                break;
+                            }
+                        }
+                        int waveBuilt = TryConstructCellPointWave(sphere);
+                        if (waveBuilt <= 0)
+                        {
+                            break;
+                        }
+                        built += waveBuilt;
+                    }
+                }
+                else
+                {
+                    int attempts;
+                    lock (storage)
+                    {
+                        attempts = Math.Min(batch, storage[1].count);
+                    }
+                    for (int i = 0; i < attempts; i++)
+                    {
+                        if (!TryConstructStructurePoint(sphere, station.id + built))
+                        {
+                            break;
+                        }
+                        built++;
+                    }
+                }
+            }
+            if (built <= 0)
+            {
+                return;
+            }
+            lock (storage)
+            {
+                storage[1].count -= built;
+                if (storage[1].inc > storage[1].count)
+                {
+                    storage[1].inc = storage[1].count;
+                }
+            }
+            plan.statConsumed.Register(consumeRegister, built);
         }
 
         private static void CraftRecipe(StationComponent station, Plan plan, int batch, int[] productRegister, int[] consumeRegister)
@@ -367,7 +820,7 @@ namespace TowerFactory
             bool isPump = prefabDesc.minerType == EMinerType.Water;
             bool isOilExtractor = prefabDesc.minerType == EMinerType.Oil;
             if (!prefabDesc.isAssembler && !prefabDesc.isLab && !prefabDesc.isFractionator && !isMiner && !isPump && !isOilExtractor
-                && !prefabDesc.gammaRayReceiver && !prefabDesc.isPowerExchanger)
+                && !prefabDesc.gammaRayReceiver && !prefabDesc.isPowerExchanger && !prefabDesc.isEjector && !prefabDesc.isSilo)
             {
                 return null;
             }
@@ -378,6 +831,15 @@ namespace TowerFactory
                 reason = "第一格设置了需求或供应";
                 return null;
             }
+            if (prefabDesc.isEjector || prefabDesc.isSilo)
+            {
+                return MatchDysonPlan(factory, storage, prefabDesc, out reason);
+            }
+            if (prefabDesc.isLab && storage[1].itemId <= 0)
+            {
+                return MatchTechResearchPlan(storage, out reason);
+            }
+
             if (!TryResolveRecipeProductId(storage, prefabDesc, buildingSlot.itemId, out int productId, out bool implicitSlot2Product)
                 && storage[1].itemId <= 0)
             {
@@ -499,6 +961,93 @@ namespace TowerFactory
         private static bool FitsSlotCount(StationStore[] storage, int[] ingredients)
         {
             return FirstIngredientSlot + ingredients.Length <= storage.Length;
+        }
+
+        private static Plan MatchTechResearchPlan(StationStore[] storage, out string reason)
+        {
+            reason = null;
+            for (int s = FirstIngredientSlot; s < storage.Length; s++)
+            {
+                int itemId = storage[s].itemId;
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+                if (!IsResearchMatrix(itemId))
+                {
+                    reason = Tr(
+                        $"第 {s + 1} 格 {ItemName(itemId)} 不是研究矩阵（6001–6006）",
+                        $"Slot {s + 1} {ItemName(itemId)} is not a research matrix (6001–6006)");
+                    return null;
+                }
+            }
+            return new Plan
+            {
+                kind = PlanKind.TechResearch,
+                description = Tr(
+                    "矩阵研究塔（UI 研究队列当前科技）",
+                    "Matrix research tower (UI research queue head)"),
+                recipeTicks = TechResearchTicksPerCycle
+            };
+        }
+
+        private static Plan MatchDysonPlan(PlanetFactory factory, StationStore[] storage, PrefabDesc prefabDesc, out string reason)
+        {
+            reason = null;
+            bool isEjector = prefabDesc.isEjector;
+            int bulletId = isEjector ? prefabDesc.ejectorBulletId : prefabDesc.siloBulletId;
+            if (bulletId <= 0)
+            {
+                reason = Tr("建筑弹药配置无效", "Invalid ammo config on building");
+                return null;
+            }
+            if (storage[1].itemId != bulletId)
+            {
+                reason = Tr(
+                    $"第二格应为 {ItemName(bulletId)}",
+                    $"Slot 2 must hold {ItemName(bulletId)}");
+                return null;
+            }
+            DysonSphere sphere = factory.dysonSphere;
+            if (sphere == null)
+            {
+                reason = Tr("本恒星系无戴森球", "No Dyson sphere in this star system");
+                return null;
+            }
+            lock (sphere.dysonSphere_mx)
+            {
+                if (isEjector)
+                {
+                    if (!SphereHasCellWork(sphere))
+                    {
+                        reason = Tr("戴森壳尚无细胞点数施工需求（请先规划壳面太阳帆）", "No cell-point construction left on the Dyson shell (plan shell sails first)");
+                        return null;
+                    }
+                }
+                else if (!SphereHasStructureWork(sphere))
+                {
+                    reason = Tr("戴森壳尚无结构点数施工需求（请先规划壳面火箭）", "No structure-point construction left (plan shell rockets first)");
+                    return null;
+                }
+            }
+            int chargeFrames = isEjector
+                ? prefabDesc.ejectorChargeFrame + prefabDesc.ejectorColdFrame
+                : prefabDesc.siloChargeFrame + prefabDesc.siloColdFrame;
+            chargeFrames = Math.Max(chargeFrames, 1);
+            string role = isEjector
+                ? Tr("弹射器直建细胞点（每帧全节点满速）", "Ejector direct cell points (max speed, all nodes each wave)")
+                : Tr("发射井直建结构点", "Silo direct structure points");
+            return new Plan
+            {
+                kind = PlanKind.Dyson,
+                dysonCellPoints = isEjector,
+                description = isEjector
+                    ? role
+                    : $"{role}，单座每 {chargeFrames / 60.0:0.##} 秒 1 点",
+                dysonBulletId = bulletId,
+                recipeTicks = chargeFrames,
+                statConsumed = ItemAmounts.Of(new[] { bulletId }, new[] { 1 })
+            };
         }
 
         private static Plan MatchFractionatorPlan(StationStore[] storage, out string reason)
