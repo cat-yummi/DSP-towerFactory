@@ -494,6 +494,12 @@ namespace TowerFactory
             return sphere.GetAutoNodeCount() > 0;
         }
 
+        /// <summary>与原版射线吸收一致：节点结构点满（sp == spMax，通常 30）后才可施工细胞点。</summary>
+        private static bool NodeReadyForCellConstruction(DysonNode node)
+        {
+            return node != null && node.sp == node.spMax;
+        }
+
         private static bool SphereHasCellWork(DysonSphere sphere)
         {
             for (int i = 1; i < sphere.layersIdBased.Length; i++)
@@ -506,7 +512,7 @@ namespace TowerFactory
                 for (int j = 1; j < layer.nodeCursor; j++)
                 {
                     DysonNode node = layer.nodePool[j];
-                    if (node != null && node.id == j && node.cpReqOrder > 0)
+                    if (node != null && node.id == j && NodeReadyForCellConstruction(node) && node.cpReqOrder > 0)
                     {
                         return true;
                     }
@@ -516,8 +522,12 @@ namespace TowerFactory
         }
 
         /// <summary>对壳面上每个仍有细胞点需求的节点各尝试一次（单个失败不阻塞其它节点）。</summary>
-        private static int TryConstructCellPointWave(DysonSphere sphere)
+        private static int TryConstructCellPointWave(DysonSphere sphere, int maxOps)
         {
+            if (maxOps <= 0)
+            {
+                return 0;
+            }
             int waveBuilt = 0;
             for (int i = 1; i < sphere.layersIdBased.Length; i++)
             {
@@ -528,8 +538,12 @@ namespace TowerFactory
                 }
                 for (int j = 1; j < layer.nodeCursor; j++)
                 {
+                    if (waveBuilt >= maxOps)
+                    {
+                        return waveBuilt;
+                    }
                     DysonNode node = layer.nodePool[j];
-                    if (node == null || node.id != j || node.cpReqOrder <= 0)
+                    if (node == null || node.id != j || !NodeReadyForCellConstruction(node) || node.cpReqOrder <= 0)
                     {
                         continue;
                     }
@@ -597,28 +611,23 @@ namespace TowerFactory
             }
             StationStore[] storage = station.storage;
             int built = 0;
+            int sailAvailable;
             lock (storage)
             {
                 if (storage[1].itemId != plan.dysonBulletId || storage[1].count <= 0)
                 {
                     return;
                 }
+                sailAvailable = storage[1].count;
             }
 
             lock (sphere.dysonSphere_mx)
             {
                 if (plan.dysonCellPoints)
                 {
-                    while (SphereHasCellWork(sphere))
+                    while (built < sailAvailable && SphereHasCellWork(sphere))
                     {
-                        lock (storage)
-                        {
-                            if (storage[1].itemId != plan.dysonBulletId || storage[1].count <= built)
-                            {
-                                break;
-                            }
-                        }
-                        int waveBuilt = TryConstructCellPointWave(sphere);
+                        int waveBuilt = TryConstructCellPointWave(sphere, sailAvailable - built);
                         if (waveBuilt <= 0)
                         {
                             break;
@@ -628,11 +637,7 @@ namespace TowerFactory
                 }
                 else
                 {
-                    int attempts;
-                    lock (storage)
-                    {
-                        attempts = Math.Min(batch, storage[1].count);
-                    }
+                    int attempts = Math.Min(batch, sailAvailable);
                     for (int i = 0; i < attempts; i++)
                     {
                         if (!TryConstructStructurePoint(sphere, station.id + built))
@@ -649,11 +654,17 @@ namespace TowerFactory
             }
             lock (storage)
             {
-                storage[1].count -= built;
+                int deduct = Math.Min(built, storage[1].count);
+                if (deduct <= 0)
+                {
+                    return;
+                }
+                storage[1].count -= deduct;
                 if (storage[1].inc > storage[1].count)
                 {
                     storage[1].inc = storage[1].count;
                 }
+                built = deduct;
             }
             plan.statConsumed.Register(consumeRegister, built);
         }
@@ -1020,7 +1031,9 @@ namespace TowerFactory
                 {
                     if (!SphereHasCellWork(sphere))
                     {
-                        reason = Tr("戴森壳尚无细胞点数施工需求（请先规划壳面太阳帆）", "No cell-point construction left on the Dyson shell (plan shell sails first)");
+                        reason = Tr(
+                            "尚无可用细胞点施工（节点结构点须满 30，且已规划壳面太阳帆）",
+                            "No cell construction available (each node needs 30 structure points, then planned shell sails)");
                         return null;
                     }
                 }
