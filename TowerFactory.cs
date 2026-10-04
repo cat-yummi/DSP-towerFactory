@@ -9,7 +9,7 @@ namespace TowerFactory
     {
         public const string PLUGIN_GUID = "com.yummi.dsp.towerfactory";
         public const string PLUGIN_NAME = "塔厂 (Tower Factory)";
-        public const string PLUGIN_VERSION = "1.1.3";
+        public const string PLUGIN_VERSION = "1.1.4";
 
         private static readonly Harmony harmony = new Harmony(PLUGIN_GUID);
         internal static ManualLogSource Log;
@@ -23,6 +23,7 @@ namespace TowerFactory
             harmony.PatchAll(typeof(TechStationGiftPatch));
             harmony.PatchAll(typeof(DysonSwarmCapPatch));
             harmony.PatchAll(typeof(StationTowerRevalidatePatch));
+            harmony.PatchAll(typeof(TechHashMainThreadPatch));
 
             Log.LogInfo($"{PLUGIN_NAME} v{PLUGIN_VERSION} 已加载");
         }

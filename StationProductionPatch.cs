@@ -518,7 +518,7 @@ namespace TowerFactory
                         {
                             break;
                         }
-                        GameMain.history.AddTechHash(remaining);
+                        TechHashMainThreadPatch.EnqueueTechHash(remaining);
                     }
                 }
             }
@@ -573,7 +573,7 @@ namespace TowerFactory
             {
                 return;
             }
-            GameMain.history.AddTechHash(hashAdd);
+            TechHashMainThreadPatch.EnqueueTechHash(hashAdd);
         }
 
         private static bool SphereHasStructureWork(DysonSphere sphere)
