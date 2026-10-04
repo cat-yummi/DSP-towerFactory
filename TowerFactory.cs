@@ -22,6 +22,7 @@ namespace TowerFactory
             harmony.PatchAll(typeof(UIStationWindowPatch));
             harmony.PatchAll(typeof(TechStationGiftPatch));
             harmony.PatchAll(typeof(DysonSwarmCapPatch));
+            harmony.PatchAll(typeof(StationTowerRevalidatePatch));
 
             Log.LogInfo($"{PLUGIN_NAME} v{PLUGIN_VERSION} 已加载");
         }

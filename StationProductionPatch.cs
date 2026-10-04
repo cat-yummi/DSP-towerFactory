@@ -85,9 +85,16 @@ namespace TowerFactory
             public bool active;
             public double progress;
             public long energyBuffer;
+            public int revalidateGeneration;
         }
 
         private static readonly ConditionalWeakTable<StationComponent, State> states = new ConditionalWeakTable<StationComponent, State>();
+        private static int stationPlanRevalidateGeneration;
+
+        internal static void InvalidateAllStationPlans()
+        {
+            stationPlanRevalidateGeneration++;
+        }
 
         internal static string Tr(string zh, string en)
         {
@@ -131,6 +138,26 @@ namespace TowerFactory
                 return;
             }
             State state = states.GetOrCreateValue(station);
+            if (state.revalidateGeneration != stationPlanRevalidateGeneration)
+            {
+                state.revalidateGeneration = stationPlanRevalidateGeneration;
+                state.signature = Array.Empty<int>();
+            }
+            else if (state.plan == null && StorageMightBeTowerFactory(station, storage)
+                && (GameMain.gameTick + station.id) % 60 == 0)
+            {
+                Plan retry = MatchPlan(factory, station, out string retryReason);
+                if (retry != null)
+                {
+                    state.signature = BuildSignature(storage);
+                    state.plan = retry;
+                    state.stableTicks = 0;
+                    state.active = false;
+                    state.progress = 0;
+                    state.energyBuffer = 0;
+                    LogMatch(factory, station, null, retry, retryReason);
+                }
+            }
 
             if (!SignatureEquals(state.signature, storage))
             {
@@ -812,6 +839,29 @@ namespace TowerFactory
             return space > 0 ? space : 0;
         }
 
+        private static bool StorageMightBeTowerFactory(StationComponent station, StationStore[] storage)
+        {
+            if (storage == null || storage.Length < 2 || storage[0].itemId <= 0 || storage[0].count <= 0)
+            {
+                return false;
+            }
+            PrefabDesc prefabDesc = LDB.items.Select(storage[0].itemId)?.prefabDesc;
+            if (prefabDesc == null)
+            {
+                return false;
+            }
+            if (storage[0].localLogic != ELogisticStorage.None
+                || (station.isStellar && storage[0].remoteLogic != ELogisticStorage.None))
+            {
+                return false;
+            }
+            bool isMiner = prefabDesc.minerType == EMinerType.Vein || prefabDesc.isVeinCollector;
+            bool isPump = prefabDesc.minerType == EMinerType.Water;
+            bool isOil = prefabDesc.minerType == EMinerType.Oil;
+            return prefabDesc.isAssembler || prefabDesc.isLab || prefabDesc.isFractionator || isMiner || isPump || isOil
+                || prefabDesc.gammaRayReceiver || prefabDesc.isPowerExchanger || prefabDesc.isEjector || prefabDesc.isSilo;
+        }
+
         private static Plan MatchPlan(PlanetFactory factory, StationComponent station, out string reason)
         {
             reason = null;
@@ -1024,24 +1074,6 @@ namespace TowerFactory
             {
                 reason = Tr("本恒星系无戴森球", "No Dyson sphere in this star system");
                 return null;
-            }
-            lock (sphere.dysonSphere_mx)
-            {
-                if (isEjector)
-                {
-                    if (!SphereHasCellWork(sphere))
-                    {
-                        reason = Tr(
-                            "尚无可用细胞点施工（节点结构点须满 30，且已规划壳面太阳帆）",
-                            "No cell construction available (each node needs 30 structure points, then planned shell sails)");
-                        return null;
-                    }
-                }
-                else if (!SphereHasStructureWork(sphere))
-                {
-                    reason = Tr("戴森壳尚无结构点数施工需求（请先规划壳面火箭）", "No structure-point construction left (plan shell rockets first)");
-                    return null;
-                }
             }
             int chargeFrames = isEjector
                 ? prefabDesc.ejectorChargeFrame + prefabDesc.ejectorColdFrame
